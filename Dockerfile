@@ -8,6 +8,7 @@ RUN chmod +x gradlew && ./gradlew --version
 
 COPY build.gradle settings.gradle ./
 COPY src ./src
+COPY audios-java ./audios-java
 
 RUN ./gradlew bootJar --no-daemon
 
@@ -16,6 +17,7 @@ FROM eclipse-temurin:21-jre
 WORKDIR /app
 
 COPY --from=build /workspace/build/libs/*.jar app.jar
+COPY audios-java ./audios-java
 
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

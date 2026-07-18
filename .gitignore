@@ -19,6 +19,7 @@ build/
 bin/
 !**/src/main/**/bin/
 !**/src/test/**/bin/
+audios-java
 
 ### IntelliJ IDEA ###
 .idea
