@@ -1,6 +1,7 @@
 HELP.md
 TODO.md
 Context.md
+TESTES.md
 .gradle
 build/
 !gradle/wrapper/gradle-wrapper.jar
