@@ -1,5 +1,6 @@
 package com.axdborges.voz.budgeting.infrastructure.ai;
 
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -27,5 +28,15 @@ class VoiceCommandInterpreterIntegrationTest {
 
         assertThat(reply).isNotBlank();
         System.out.println("Comando: " + transcribedText + " -> Interpretação: " + reply);
+    }
+
+    @Test
+    void shouldNotGuessAnIntentWhenTheCommandIsAmbiguous() {
+        String transcribedText = "Olá, hoje o dia está de sol e eu estou programando em Java.";
+
+        String reply = voiceCommandInterpreter.interpret(transcribedText);
+
+        assertThat(reply.toLowerCase()).contains("não identific");
+        System.out.println("Comando ambíguo -> Interpretação: " + reply);
     }
 }
