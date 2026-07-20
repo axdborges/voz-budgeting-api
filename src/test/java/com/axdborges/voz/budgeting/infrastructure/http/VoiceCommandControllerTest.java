@@ -5,6 +5,7 @@ import com.axdborges.voz.budgeting.infrastructure.ai.VoiceCommandInterpreter;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -12,6 +13,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -41,6 +43,40 @@ class VoiceCommandControllerTest {
                         {
                           "transcription": "Gastei 50 reais no mercado",
                           "reply": "Entendi: registrar um gasto de R$ 50 no mercado."
+                        }
+                        """));
+    }
+
+    @Test
+    void shouldUseTheDefaultAudioFileWhenNoFileParamIsGiven() throws Exception {
+        when(audioTranscriptionService.transcribe(eq(new FileSystemResource("audios-java/meu-nome.mp3"))))
+                .thenReturn("Olá, meu nome é Alexandre.");
+        when(voiceCommandInterpreter.interpret(eq("Olá, meu nome é Alexandre.")))
+                .thenReturn("Não identifiquei um comando financeiro claro.");
+
+        mockMvc.perform(get("/voice-commands/mock"))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {
+                          "transcription": "Olá, meu nome é Alexandre.",
+                          "reply": "Não identifiquei um comando financeiro claro."
+                        }
+                        """));
+    }
+
+    @Test
+    void shouldUseTheAudioFileGivenInTheFileParam() throws Exception {
+        when(audioTranscriptionService.transcribe(eq(new FileSystemResource("audios-java/adicionar-saldo.mp3"))))
+                .thenReturn("Quero colocar 50 reais na minha conta hoje.");
+        when(voiceCommandInterpreter.interpret(eq("Quero colocar 50 reais na minha conta hoje.")))
+                .thenReturn("Entendi: registrar um gasto de R$ 50.");
+
+        mockMvc.perform(get("/voice-commands/mock").param("file", "adicionar-saldo.mp3"))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {
+                          "transcription": "Quero colocar 50 reais na minha conta hoje.",
+                          "reply": "Entendi: registrar um gasto de R$ 50."
                         }
                         """));
     }

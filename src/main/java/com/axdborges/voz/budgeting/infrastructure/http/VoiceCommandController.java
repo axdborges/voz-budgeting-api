@@ -13,8 +13,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-// TODO (Tarefa 5 - TODO.md): a interpretação ainda só descreve a intenção em texto; falta o
-// Tool Calling registrar os use cases reais (persistir/consultar transação) no ChatClient.
 @RestController
 @RequestMapping("/voice-commands")
 public class VoiceCommandController {

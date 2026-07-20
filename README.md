@@ -1,6 +1,6 @@
 # voz-budgeting-api
 
-API de orçamento que usa IA para processar comandos de voz relacionados a transações financeiras. O cliente envia um áudio, a aplicação transcreve o comando, interpreta a intenção com um LLM e (nas próximas etapas) executa a ação correspondente — registrar ou consultar uma transação — devolvendo uma resposta em texto e, futuramente, em áudio.
+API de orçamento que usa IA para processar comandos de voz relacionados a transações financeiras. O cliente envia um áudio, a aplicação transcreve o comando e interpreta a intenção com um LLM, que classifica o comando em uma de três categorias — **registrar transação**, **consultar transações** ou **intenção não identificada** (quando o áudio não é um comando financeiro claro) — e **executa a ação de verdade via Tool Calling** (persiste ou consulta as transações), devolvendo uma resposta em texto e, futuramente, em áudio.
 
 Desafio de Projeto da [DIO](https://dio.me), baseado no repositório [dio-spring-boot-learning-track](https://github.com/axdborges/dio-spring-boot-learning-track/tree/main)/05-spring-ai.
 
@@ -47,7 +47,13 @@ As variáveis ficam no arquivo `.env` (na raiz do projeto, **não é versionado*
 
 ### `POST /voice-commands`
 
-Endpoint principal: recebe um arquivo de áudio, transcreve e envia o texto pro `ChatClient`, que interpreta a intenção do comando (registrar uma transação, consultar transações, ou nenhuma das duas).
+Endpoint principal: recebe um arquivo de áudio, transcreve e envia o texto pro `ChatClient`, que classifica o comando em uma de três categorias e **executa a ação de verdade** através de Tool Calling:
+
+1. **Registrar transação** — comando com ação financeira clara, seja gasto (ex.: "gastei", "paguei", "comprei") ou entrada/depósito (ex.: "coloquei", "depositei", "recebi") e um valor. Aciona a tool `registrarTransacao`, que persiste a transação.
+2. **Consultar transações** — pergunta sobre gastos/saldo já existentes (ex.: "quanto eu gastei em mercado?"). Aciona a tool `consultarTransacoesPorCategoria`, que devolve a soma real das transações já registradas naquela categoria.
+3. **Intenção não identificada** — o áudio não é um comando financeiro claro (ambíguo, incompleto, assunto não relacionado a finanças). Nesse caso o modelo **não chama nenhuma tool** — ele avisa que não entendeu e pede pra repetir.
+
+Categorias usadas internamente: `MERCADO`, `TRANSPORTE`, `LAZER`, `SAUDE`, `MORADIA`, `EDUCACAO`, `OUTROS` (usada quando a categoria não é mencionada no comando).
 
 - **Content-Type**: `multipart/form-data`
 - **Campo**: `audio` (arquivo de áudio, ex.: mp3, wav, m4a)
@@ -56,15 +62,23 @@ Endpoint principal: recebe um arquivo de áudio, transcreve e envia o texto pro 
 curl -F "audio=@caminho/para/comando.mp3" http://localhost:8080/voice-commands
 ```
 
-**Resposta** (`200 OK`):
+**Resposta** (`200 OK`) — exemplo registrando uma transação:
 ```json
 {
   "transcription": "Eu quero colocar R$50,00 na minha conta hoje",
-  "reply": "Ação identificada: registrar transação. Dados extraídos do comando: valor R$50,00, ação \"colocar na conta\", data \"hoje\"."
+  "reply": "Transação registrada com sucesso: R$ 50,00 na categoria OUTROS (depósito na conta)."
 }
 ```
 
-> Status atual: transcreve e interpreta a intenção em texto, mas ainda não executa nenhuma ação real (não persiste, não consulta) — isso é Tool Calling, a próxima tarefa.
+**Resposta** (`200 OK`) — exemplo consultando transações já registradas:
+```json
+{
+  "transcription": "Quanto eu tenho na minha conta?",
+  "reply": "Você tem 1 transação(ões) na categoria OUTROS, totalizando R$ 50,00."
+}
+```
+
+> Status atual: transcrição, interpretação e execução real (persistência/consulta) já funcionam de ponta a ponta. A persistência hoje é **em memória** (`InMemoryTransactionRepository`) — some quando a aplicação reinicia; troca por banco real é a próxima tarefa (6).
 
 ### `GET /voice-commands/mock`
 
@@ -80,7 +94,7 @@ curl "http://localhost:8080/voice-commands/mock?file=adicionar-saldo.mp3"
 ```json
 {
   "transcription": "Olá, meu nome é Alexandre e eu quero colocar R$50,00 na minha conta hoje. Preciso colocar R$50,00.",
-  "reply": "Ação identificada: registrar transação. Dados extraídos do comando: valor R$50,00, ação \"colocar na conta\", data \"hoje\"."
+  "reply": "Transação registrada com sucesso: R$ 50,00 na categoria OUTROS (depósito na conta)."
 }
 ```
 
@@ -89,12 +103,12 @@ curl "http://localhost:8080/voice-commands/mock?file=adicionar-saldo.mp3"
 Arquitetura em camadas (DDD), pacote base `com.axdborges.voz.budgeting`:
 
 - `domain/` — modelo de domínio e contrato de repositório (`Transaction`, `TransactionId`, `Category`, `TransactionRepository`).
-- `application/` — casos de uso, usados tanto pelo REST quanto pelo futuro Tool Calling (`PersistTransactionUseCase`, `ListTransactionsByCategoryUseCase`).
+- `application/` — casos de uso, usados tanto pelo REST quanto pelo Tool Calling (`PersistTransactionUseCase`, `ListTransactionsByCategoryUseCase`).
 - `infrastructure/http/` — controllers REST (`VoiceCommandController`, `TransactionController`).
-- `infrastructure/ai/` — integração com os modelos de IA (`AudioTranscriptionService`, `ChatClientConfig`, `VoiceCommandInterpreter`).
-- `infrastructure/persistence/` — adapters de persistência (JPA), a implementar.
+- `infrastructure/ai/` — integração com os modelos de IA (`AudioTranscriptionService`, `ChatClientConfig`, `VoiceCommandInterpreter`, `TransactionTools`).
+- `infrastructure/persistence/` — implementação do `TransactionRepository`. Hoje é `InMemoryTransactionRepository` (em memória, some ao reiniciar); vira JPA/banco real na Tarefa 6, sem mudar `domain`/`application`.
 
-As classes de `domain`, `application` e `infrastructure/persistence` ainda são esqueletos (sem lógica) até as tarefas correspondentes do `TODO.md` serem implementadas — cada uma tem um comentário `// TODO (Tarefa N)` indicando quando será preenchida.
+`infrastructure/persistence/entity` e `infrastructure/persistence/repository` (JPA) ainda são esqueletos até a Tarefa 6 — marcados com `// TODO (Tarefa 6)`.
 
 ## Testes
 
@@ -107,7 +121,9 @@ docker run --rm voz-test ./gradlew test --no-daemon
 
 > No Windows, rodar `./gradlew test` fora do Docker falha por um problema de encoding do path do projeto — sempre valide via Docker (detalhes em `TESTES.md`).
 
-Testes de integração que fazem chamadas reais à OpenAI (`OpenAiChatModelIntegrationTest`, `AudioTranscriptionServiceIntegrationTest`) só rodam quando a variável `OPENAI_API_KEY` está definida no ambiente onde os testes executam:
+Ambas as rotas (`POST /voice-commands` e `GET /voice-commands/mock`, incluindo o parâmetro `file` e o valor default) têm testes unitários com mocks em `VoiceCommandControllerTest` — não dependem de áudio real nem de chave da OpenAI.
+
+Testes de integração que fazem chamadas reais à OpenAI (`OpenAiChatModelIntegrationTest`, `AudioTranscriptionServiceIntegrationTest`, `VoiceCommandInterpreterIntegrationTest`) só rodam quando a variável `OPENAI_API_KEY` está definida no ambiente onde os testes executam:
 
 ```bash
 docker run --rm --env-file .env voz-test ./gradlew test --no-daemon
@@ -121,7 +137,7 @@ Progresso detalhado em `TODO.md`. Resumo:
 - [x] 2. Spring AI + integração com o modelo de linguagem
 - [x] 3. Recebimento e transcrição de áudio
 - [x] 4. `ChatClient` e interpretação de intenção
-- [ ] 5. Tool Calling
+- [x] 5. Tool Calling
 - [ ] 6. Persistência das transações
 - [ ] 7. Geração de voz a partir da resposta
 - [ ] 8. Endpoints REST de transações

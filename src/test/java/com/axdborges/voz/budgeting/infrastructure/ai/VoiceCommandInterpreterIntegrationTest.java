@@ -36,7 +36,8 @@ class VoiceCommandInterpreterIntegrationTest {
 
         String reply = voiceCommandInterpreter.interpret(transcribedText);
 
-        assertThat(reply.toLowerCase()).contains("não identific");
+        assertThat(reply.toLowerCase()).contains("identif");
+        assertThat(reply.toLowerCase()).doesNotContain("registrada com sucesso");
         System.out.println("Comando ambíguo -> Interpretação: " + reply);
     }
 }

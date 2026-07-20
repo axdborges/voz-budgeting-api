@@ -1,5 +1,9 @@
 package com.axdborges.voz.budgeting.application.input;
 
-// TODO (Tarefa 5/6 - TODO.md): dados de entrada do caso de uso de persistência
-public record PersistTransactionInput() {
+import com.axdborges.voz.budgeting.domain.Category;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
+public record PersistTransactionInput(String description, Category category, BigDecimal amount, LocalDate date) {
 }

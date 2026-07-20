@@ -1,5 +1,10 @@
 package com.axdborges.voz.budgeting.application.output;
 
-// TODO (Tarefa 5/6 - TODO.md): dados de saída dos casos de uso de transação
-public record TransactionOutput() {
+import com.axdborges.voz.budgeting.domain.Category;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+public record TransactionOutput(String id, String description, Category category, BigDecimal amount,
+                                 LocalDateTime occurredAt) {
 }

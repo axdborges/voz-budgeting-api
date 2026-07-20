@@ -1,5 +1,12 @@
 package com.axdborges.voz.budgeting.domain;
 
-// TODO (Tarefa 6 - TODO.md): contrato de persistência de transações
+import java.util.List;
+
 public interface TransactionRepository {
+
+    void save(Transaction transaction);
+
+    List<Transaction> findByCategory(Category category);
+
+    List<Transaction> findAll();
 }
