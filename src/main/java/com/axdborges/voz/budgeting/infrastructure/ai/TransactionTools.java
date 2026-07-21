@@ -1,5 +1,6 @@
 package com.axdborges.voz.budgeting.infrastructure.ai;
 
+import com.axdborges.voz.budgeting.application.ListAllTransactionsUseCase;
 import com.axdborges.voz.budgeting.application.ListTransactionsByCategoryUseCase;
 import com.axdborges.voz.budgeting.application.PersistTransactionUseCase;
 import com.axdborges.voz.budgeting.application.input.PersistTransactionInput;
@@ -12,8 +13,12 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Component
 public class TransactionTools {
@@ -22,11 +27,14 @@ public class TransactionTools {
 
     private final PersistTransactionUseCase persistTransactionUseCase;
     private final ListTransactionsByCategoryUseCase listTransactionsByCategoryUseCase;
+    private final ListAllTransactionsUseCase listAllTransactionsUseCase;
 
     public TransactionTools(PersistTransactionUseCase persistTransactionUseCase,
-                             ListTransactionsByCategoryUseCase listTransactionsByCategoryUseCase) {
+                             ListTransactionsByCategoryUseCase listTransactionsByCategoryUseCase,
+                             ListAllTransactionsUseCase listAllTransactionsUseCase) {
         this.persistTransactionUseCase = persistTransactionUseCase;
         this.listTransactionsByCategoryUseCase = listTransactionsByCategoryUseCase;
+        this.listAllTransactionsUseCase = listAllTransactionsUseCase;
     }
 
     @Tool(description = "Registra uma nova transação financeira (gasto) do usuário. "
@@ -81,5 +89,37 @@ public class TransactionTools {
 
         return String.format(PT_BR, "Você tem %d transação(ões) na categoria %s, totalizando R$ %.2f.",
                 transacoes.size(), categoria, total);
+    }
+
+    @Tool(description = "Consulta TODAS as transações já registradas, agrupadas por categoria, com o total gasto "
+            + "em cada uma. Só chame esta ferramenta quando o comando pedir uma visão geral/todas as categorias "
+            + "(ex.: 'quais foram todas as minhas transações', 'resumo de tudo que eu gastei', 'todas as categorias'), "
+            + "e não uma categoria específica — nesse caso use a ferramenta consultarTransacoesPorCategoria.")
+    public String consultarTodasAsTransacoes() {
+        List<TransactionOutput> transacoes = listAllTransactionsUseCase.execute();
+
+        if (transacoes.isEmpty()) {
+            return "Você ainda não tem nenhuma transação registrada.";
+        }
+
+        Map<Category, List<TransactionOutput>> porCategoria = transacoes.stream()
+                .collect(Collectors.groupingBy(TransactionOutput::category, () -> new EnumMap<>(Category.class),
+                        Collectors.toList()));
+
+        StringBuilder resumo = new StringBuilder("Resumo de todas as suas transações por categoria:");
+        porCategoria.entrySet().stream()
+                .sorted(Comparator.comparing(entry -> entry.getKey().name()))
+                .forEach(entry -> {
+                    Category categoria = entry.getKey();
+                    List<TransactionOutput> transacoesDaCategoria = entry.getValue();
+                    BigDecimal totalDaCategoria = transacoesDaCategoria.stream()
+                            .map(TransactionOutput::amount)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                    resumo.append(String.format(PT_BR, "%n- %s: %d transação(ões), totalizando R$ %.2f",
+                            categoria, transacoesDaCategoria.size(), totalDaCategoria));
+                });
+
+        return resumo.toString();
     }
 }

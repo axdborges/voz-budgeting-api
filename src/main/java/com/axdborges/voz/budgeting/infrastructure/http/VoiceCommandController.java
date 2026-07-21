@@ -36,7 +36,7 @@ public class VoiceCommandController {
     // Não faz parte do desafio — remover antes de qualquer publicação/deploy real.
     @GetMapping("/mock")
     public ResponseEntity<VoiceCommandResponse> receiveMock(
-            @RequestParam(defaultValue = "meu-nome.mp3") String file) {
+            @RequestParam(defaultValue = "mercado.mp3") String file) {
         return ResponseEntity.ok(process(new FileSystemResource("audios-java/" + file)));
     }
 

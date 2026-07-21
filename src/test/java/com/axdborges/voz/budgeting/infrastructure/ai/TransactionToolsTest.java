@@ -1,5 +1,6 @@
 package com.axdborges.voz.budgeting.infrastructure.ai;
 
+import com.axdborges.voz.budgeting.application.ListAllTransactionsUseCase;
 import com.axdborges.voz.budgeting.application.ListTransactionsByCategoryUseCase;
 import com.axdborges.voz.budgeting.application.PersistTransactionUseCase;
 import com.axdborges.voz.budgeting.application.input.PersistTransactionInput;
@@ -30,12 +31,20 @@ class TransactionToolsTest {
     @Mock
     private ListTransactionsByCategoryUseCase listTransactionsByCategoryUseCase;
 
+    @Mock
+    private ListAllTransactionsUseCase listAllTransactionsUseCase;
+
+    private TransactionTools newTools() {
+        return new TransactionTools(persistTransactionUseCase, listTransactionsByCategoryUseCase,
+                listAllTransactionsUseCase);
+    }
+
     @Test
     void shouldPersistTheTransactionAndSummarizeTheResult() {
         when(persistTransactionUseCase.execute(any(PersistTransactionInput.class)))
                 .thenReturn(new TransactionOutput("abc-123", "mercado", Category.MERCADO,
                         BigDecimal.valueOf(50), LocalDateTime.now()));
-        var tools = new TransactionTools(persistTransactionUseCase, listTransactionsByCategoryUseCase);
+        var tools = newTools();
 
         String result = tools.registrarTransacao(Category.MERCADO, BigDecimal.valueOf(50), "mercado", null);
 
@@ -47,7 +56,7 @@ class TransactionToolsTest {
         when(persistTransactionUseCase.execute(any(PersistTransactionInput.class)))
                 .thenReturn(new TransactionOutput("abc-123", null, Category.MERCADO,
                         BigDecimal.valueOf(50), LocalDateTime.now()));
-        var tools = new TransactionTools(persistTransactionUseCase, listTransactionsByCategoryUseCase);
+        var tools = newTools();
 
         String result = tools.registrarTransacao(Category.MERCADO, BigDecimal.valueOf(50), null, null);
 
@@ -59,7 +68,7 @@ class TransactionToolsTest {
         when(persistTransactionUseCase.execute(any(PersistTransactionInput.class)))
                 .thenReturn(new TransactionOutput("abc-123", "mercado", Category.MERCADO,
                         BigDecimal.valueOf(50), LocalDateTime.of(2026, 7, 19, 10, 0)));
-        var tools = new TransactionTools(persistTransactionUseCase, listTransactionsByCategoryUseCase);
+        var tools = newTools();
 
         tools.registrarTransacao(Category.MERCADO, BigDecimal.valueOf(50), "mercado", "2026-07-19");
 
@@ -73,7 +82,7 @@ class TransactionToolsTest {
         when(persistTransactionUseCase.execute(any(PersistTransactionInput.class)))
                 .thenReturn(new TransactionOutput("abc-123", "mercado", Category.MERCADO,
                         BigDecimal.valueOf(50), LocalDateTime.now()));
-        var tools = new TransactionTools(persistTransactionUseCase, listTransactionsByCategoryUseCase);
+        var tools = newTools();
 
         tools.registrarTransacao(Category.MERCADO, BigDecimal.valueOf(50), "mercado", "não é uma data");
 
@@ -88,7 +97,7 @@ class TransactionToolsTest {
                 new TransactionOutput("1", "mercado 1", Category.MERCADO, BigDecimal.valueOf(30), LocalDateTime.now()),
                 new TransactionOutput("2", "mercado 2", Category.MERCADO, BigDecimal.valueOf(20), LocalDateTime.now())
         ));
-        var tools = new TransactionTools(persistTransactionUseCase, listTransactionsByCategoryUseCase);
+        var tools = newTools();
 
         String result = tools.consultarTransacoesPorCategoria(Category.MERCADO);
 
@@ -98,10 +107,36 @@ class TransactionToolsTest {
     @Test
     void shouldInformThereAreNoTransactionsWhenListIsEmpty() {
         when(listTransactionsByCategoryUseCase.execute(Category.LAZER)).thenReturn(List.of());
-        var tools = new TransactionTools(persistTransactionUseCase, listTransactionsByCategoryUseCase);
+        var tools = newTools();
 
         String result = tools.consultarTransacoesPorCategoria(Category.LAZER);
 
         assertThat(result).contains("Nenhuma transação").contains("LAZER");
+    }
+
+    @Test
+    void shouldSummarizeAllTransactionsGroupedByCategory() {
+        when(listAllTransactionsUseCase.execute()).thenReturn(List.of(
+                new TransactionOutput("1", "mercado 1", Category.MERCADO, BigDecimal.valueOf(30), LocalDateTime.now()),
+                new TransactionOutput("2", "mercado 2", Category.MERCADO, BigDecimal.valueOf(20), LocalDateTime.now()),
+                new TransactionOutput("3", "uber", Category.TRANSPORTE, BigDecimal.valueOf(12.5), LocalDateTime.now())
+        ));
+        var tools = newTools();
+
+        String result = tools.consultarTodasAsTransacoes();
+
+        assertThat(result)
+                .contains("MERCADO").contains("2 transação(ões)").contains("50,00")
+                .contains("TRANSPORTE").contains("1 transação(ões)").contains("12,50");
+    }
+
+    @Test
+    void shouldInformThereAreNoTransactionsAtAllWhenListIsEmpty() {
+        when(listAllTransactionsUseCase.execute()).thenReturn(List.of());
+        var tools = newTools();
+
+        String result = tools.consultarTodasAsTransacoes();
+
+        assertThat(result).contains("nenhuma transação");
     }
 }

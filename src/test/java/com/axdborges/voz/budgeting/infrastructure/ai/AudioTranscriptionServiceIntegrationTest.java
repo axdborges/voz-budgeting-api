@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
+import org.springframework.test.context.ActiveProfiles;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -14,13 +15,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 // fora do controle de versão). Só roda quando OPENAI_API_KEY está definida.
 @SpringBootTest
 @EnabledIfEnvironmentVariable(named = "OPENAI_API_KEY", matches = ".+")
+@ActiveProfiles("test")
 class AudioTranscriptionServiceIntegrationTest {
 
     @Autowired
     private AudioTranscriptionService audioTranscriptionService;
 
     @ParameterizedTest(name = "deve transcrever {0}")
-    @ValueSource(strings = {"meu-nome.mp3", "nome-idade.mp3"})
+    @ValueSource(strings = {"mercado.mp3", "uber.mp3", "livros.mp3"})
     void shouldTranscribeTheSampleAudioFile(String fileName) {
         Resource audio = new FileSystemResource("audios-java/" + fileName);
 

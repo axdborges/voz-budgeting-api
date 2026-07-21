@@ -21,13 +21,19 @@ repositories {
 
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    runtimeOnly 'com.mysql:mysql-connector-j'
 
     implementation platform('org.springframework.ai:spring-ai-bom:2.0.0')
     implementation 'org.springframework.ai:spring-ai-starter-model-openai'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.boot:spring-boot-webmvc-test'
+    testImplementation 'org.springframework.boot:spring-boot-data-jpa-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    // H2 só para os testes automatizados: banco real em produção é MySQL (ver compose.yml),
+    // H2 evita depender de um container de banco pra rodar a suíte de testes.
+    testRuntimeOnly 'com.h2database:h2'
 }
 
 tasks.named('test') {

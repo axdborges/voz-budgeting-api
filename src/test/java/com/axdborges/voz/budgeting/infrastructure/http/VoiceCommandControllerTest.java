@@ -49,17 +49,17 @@ class VoiceCommandControllerTest {
 
     @Test
     void shouldUseTheDefaultAudioFileWhenNoFileParamIsGiven() throws Exception {
-        when(audioTranscriptionService.transcribe(eq(new FileSystemResource("audios-java/meu-nome.mp3"))))
-                .thenReturn("Olá, meu nome é Alexandre.");
-        when(voiceCommandInterpreter.interpret(eq("Olá, meu nome é Alexandre.")))
-                .thenReturn("Não identifiquei um comando financeiro claro.");
+        when(audioTranscriptionService.transcribe(eq(new FileSystemResource("audios-java/mercado.mp3"))))
+                .thenReturn("O mercado da semana passada deu R$ 669,29.");
+        when(voiceCommandInterpreter.interpret(eq("O mercado da semana passada deu R$ 669,29.")))
+                .thenReturn("Transação registrada com sucesso: R$ 669,29 em MERCADO.");
 
         mockMvc.perform(get("/voice-commands/mock"))
                 .andExpect(status().isOk())
                 .andExpect(content().json("""
                         {
-                          "transcription": "Olá, meu nome é Alexandre.",
-                          "reply": "Não identifiquei um comando financeiro claro."
+                          "transcription": "O mercado da semana passada deu R$ 669,29.",
+                          "reply": "Transação registrada com sucesso: R$ 669,29 em MERCADO."
                         }
                         """));
     }

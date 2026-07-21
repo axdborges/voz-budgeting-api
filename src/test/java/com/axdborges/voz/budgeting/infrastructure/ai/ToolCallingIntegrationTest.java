@@ -6,13 +6,18 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 // TODO (Tarefa 5 - TODO.md): valida que um comando de voz claro realmente aciona a tool e persiste
 // a transação (não só descreve a intenção em texto). Só roda quando OPENAI_API_KEY está definida.
+// @DirtiesContext garante um TransactionRepository (agora JPA/H2 em memória) limpo pra esta classe.
 @SpringBootTest
 @EnabledIfEnvironmentVariable(named = "OPENAI_API_KEY", matches = ".+")
+@ActiveProfiles("test")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
 class ToolCallingIntegrationTest {
 
     @Autowired
