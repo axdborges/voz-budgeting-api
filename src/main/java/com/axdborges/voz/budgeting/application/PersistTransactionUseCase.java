@@ -2,6 +2,9 @@ package com.axdborges.voz.budgeting.application;
 
 import com.axdborges.voz.budgeting.application.input.PersistTransactionInput;
 import com.axdborges.voz.budgeting.application.output.TransactionOutput;
+import com.axdborges.voz.budgeting.domain.AuditAction;
+import com.axdborges.voz.budgeting.domain.AuditLog;
+import com.axdborges.voz.budgeting.domain.AuditLogRepository;
 import com.axdborges.voz.budgeting.domain.Transaction;
 import com.axdborges.voz.budgeting.domain.TransactionId;
 import com.axdborges.voz.budgeting.domain.TransactionRepository;
@@ -13,9 +16,12 @@ import java.time.LocalDateTime;
 public class PersistTransactionUseCase {
 
     private final TransactionRepository transactionRepository;
+    private final AuditLogRepository auditLogRepository;
 
-    public PersistTransactionUseCase(TransactionRepository transactionRepository) {
+    public PersistTransactionUseCase(TransactionRepository transactionRepository,
+                                      AuditLogRepository auditLogRepository) {
         this.transactionRepository = transactionRepository;
+        this.auditLogRepository = auditLogRepository;
     }
 
     public TransactionOutput execute(PersistTransactionInput input) {
@@ -27,6 +33,10 @@ public class PersistTransactionUseCase {
                 input.amount(), occurredAt);
 
         transactionRepository.save(transaction);
+
+        String detail = "Categoria: %s, valor: R$ %s%s".formatted(transaction.category(), transaction.amount(),
+                transaction.description() != null ? ", descrição: " + transaction.description() : "");
+        auditLogRepository.save(new AuditLog(transaction.id(), AuditAction.CREATED, detail, LocalDateTime.now()));
 
         return new TransactionOutput(transaction.id().value().toString(), transaction.description(),
                 transaction.category(), transaction.amount(), transaction.occurredAt(), transaction.updatedAt());

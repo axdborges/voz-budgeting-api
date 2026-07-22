@@ -64,16 +64,11 @@ public class VoiceCommandController {
         String reply = voiceCommandInterpreter.interpret(transcription);
         byte[] audioReply = textToSpeechService.synthesize(reply);
 
-        if (wantsRawAudio(accept)) {
+        if (ContentNegotiation.wantsRawAudio(accept)) {
             return ResponseEntity.ok().contentType(AUDIO_MPEG).body(audioReply);
         }
 
         String audioBase64 = Base64.getEncoder().encodeToString(audioReply);
         return ResponseEntity.ok(new VoiceCommandResponse(transcription, reply, audioBase64));
-    }
-
-    private boolean wantsRawAudio(String accept) {
-        return MediaType.parseMediaTypes(accept).stream()
-                .anyMatch(mediaType -> !mediaType.isWildcardType() && "audio".equalsIgnoreCase(mediaType.getType()));
     }
 }

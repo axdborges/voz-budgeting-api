@@ -2,6 +2,9 @@ package com.axdborges.voz.budgeting.application;
 
 import com.axdborges.voz.budgeting.application.input.UpdateTransactionInput;
 import com.axdborges.voz.budgeting.application.output.TransactionOutput;
+import com.axdborges.voz.budgeting.domain.AuditAction;
+import com.axdborges.voz.budgeting.domain.AuditLog;
+import com.axdborges.voz.budgeting.domain.AuditLogRepository;
 import com.axdborges.voz.budgeting.domain.Category;
 import com.axdborges.voz.budgeting.domain.Transaction;
 import com.axdborges.voz.budgeting.domain.TransactionId;
@@ -29,6 +32,9 @@ class UpdateTransactionUseCaseTest {
     @Mock
     private TransactionRepository transactionRepository;
 
+    @Mock
+    private AuditLogRepository auditLogRepository;
+
     @Test
     void shouldApplyOnlyTheGivenFieldsAndSetUpdatedAt() {
         TransactionId id = TransactionId.generate();
@@ -36,7 +42,7 @@ class UpdateTransactionUseCaseTest {
         Transaction existing = new Transaction(id, "supermercado", Category.MERCADO, BigDecimal.valueOf(50),
                 occurredAt);
         when(transactionRepository.findById(id)).thenReturn(Optional.of(existing));
-        var useCase = new UpdateTransactionUseCase(transactionRepository);
+        var useCase = new UpdateTransactionUseCase(transactionRepository, auditLogRepository);
 
         TransactionOutput output = useCase.execute(id, new UpdateTransactionInput(null, null,
                 BigDecimal.valueOf(75), null));
@@ -62,7 +68,7 @@ class UpdateTransactionUseCaseTest {
         Transaction existing = new Transaction(id, "supermercado", Category.MERCADO, BigDecimal.valueOf(50),
                 occurredAt);
         when(transactionRepository.findById(id)).thenReturn(Optional.of(existing));
-        var useCase = new UpdateTransactionUseCase(transactionRepository);
+        var useCase = new UpdateTransactionUseCase(transactionRepository, auditLogRepository);
 
         LocalDate newDate = LocalDate.of(2026, 7, 20);
         useCase.execute(id, new UpdateTransactionInput(null, null, null, newDate));
@@ -77,9 +83,28 @@ class UpdateTransactionUseCaseTest {
     void shouldThrowWhenTheTransactionDoesNotExist() {
         TransactionId id = TransactionId.generate();
         when(transactionRepository.findById(id)).thenReturn(Optional.empty());
-        var useCase = new UpdateTransactionUseCase(transactionRepository);
+        var useCase = new UpdateTransactionUseCase(transactionRepository, auditLogRepository);
         var input = new UpdateTransactionInput(null, null, null, null);
 
         assertThatThrownBy(() -> useCase.execute(id, input)).isInstanceOf(TransactionNotFoundException.class);
+    }
+
+    @Test
+    void shouldRecordAnAuditLogDescribingOnlyTheChangedFields() {
+        TransactionId id = TransactionId.generate();
+        LocalDateTime occurredAt = LocalDateTime.of(2026, 7, 19, 10, 0);
+        Transaction existing = new Transaction(id, "supermercado", Category.MERCADO, BigDecimal.valueOf(50),
+                occurredAt);
+        when(transactionRepository.findById(id)).thenReturn(Optional.of(existing));
+        var useCase = new UpdateTransactionUseCase(transactionRepository, auditLogRepository);
+
+        useCase.execute(id, new UpdateTransactionInput(null, null, BigDecimal.valueOf(75), null));
+
+        ArgumentCaptor<AuditLog> captor = ArgumentCaptor.forClass(AuditLog.class);
+        verify(auditLogRepository).save(captor.capture());
+
+        assertThat(captor.getValue().action()).isEqualTo(AuditAction.UPDATED);
+        assertThat(captor.getValue().detail()).contains("valor").contains("50").contains("75")
+                .doesNotContain("categoria").doesNotContain("descrição");
     }
 }

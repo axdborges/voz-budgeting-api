@@ -271,15 +271,97 @@ Apaga uma transação. Devolve `204 No Content` em caso de sucesso, `404 Not Fou
 curl -X DELETE http://localhost:8080/transactions/9c8b7a6d-1234-4a1b-8abc-1234567890ab
 ```
 
+### `GET /version`
+
+Devolve a versão da aplicação em execução, lida automaticamente do `build.gradle` em tempo de build (task `bootBuildInfo`, sem duplicar o valor em nenhum outro lugar).
+
+```bash
+curl http://localhost:8080/version
+```
+
+```json
+{
+  "name": "voz-budgeting-api",
+  "version": "0.0.1-SNAPSHOT",
+  "buildTime": "2026-07-22T12:41:36.174Z"
+}
+```
+
+### `GET /audit-logs`
+
+Lista o histórico de auditoria das transações (criação, edição e exclusão), persistido em uma tabela própria no MySQL (`audit_logs`), independente da tabela `transactions` — o registro de auditoria de uma transação apagada continua existindo mesmo depois que a transação em si deixou de existir. Aceita um filtro opcional `transactionId`. Sem filtro, lista tudo; com filtro, só os eventos daquela transação. Sempre ordenado do mais recente para o mais antigo.
+
+```bash
+curl http://localhost:8080/audit-logs
+curl "http://localhost:8080/audit-logs?transactionId=9c8b7a6d-1234-4a1b-8abc-1234567890ab"
+```
+
+```json
+[
+  {
+    "id": 3,
+    "transactionId": "9c8b7a6d-1234-4a1b-8abc-1234567890ab",
+    "action": "DELETED",
+    "detail": "Categoria: MERCADO, valor: R$ 99.90, descrição: teste auditoria",
+    "occurredAt": "2026-07-22T12:45:49.545614"
+  },
+  {
+    "id": 2,
+    "transactionId": "9c8b7a6d-1234-4a1b-8abc-1234567890ab",
+    "action": "UPDATED",
+    "detail": "valor: R$ 42.50 -> R$ 99.90;",
+    "occurredAt": "2026-07-22T12:45:49.439948"
+  },
+  {
+    "id": 1,
+    "transactionId": "9c8b7a6d-1234-4a1b-8abc-1234567890ab",
+    "action": "CREATED",
+    "detail": "Categoria: MERCADO, valor: R$ 42.50, descrição: teste auditoria",
+    "occurredAt": "2026-07-22T12:45:49.204462"
+  }
+]
+```
+
+`400 Bad Request` se `transactionId` não for um UUID válido.
+
+### `GET /reports`
+
+Gera um relatório de gastos por categoria, em porcentagem sobre o total de todas as transações. Os percentuais são calculados de forma determinística (soma por categoria ÷ soma total, sem envolver IA), e a **IA entra só para escrever o texto do relatório** em português natural a partir desses números já prontos (o modelo não recalcula nada e não pode inventar categoria/valor fora do que foi calculado). Igual a `POST /voice-commands`, o formato de retorno depende do header `Accept` — mas aqui o áudio só é gerado quando pedido (evita uma chamada de TTS desnecessária quando o cliente só quer o JSON).
+
+| `Accept` | Retorno |
+|---|---|
+| ausente, `application/json`, `*/*` | `200`, JSON com o texto do relatório e o detalhamento numérico por categoria |
+| `audio/mpeg` (ou outro `audio/*` concreto) | `200`, áudio MP3 puro (`Content-Type: audio/mpeg`) narrando o relatório |
+
+```bash
+curl http://localhost:8080/reports
+curl http://localhost:8080/reports -H "Accept: audio/mpeg" -o relatorio.mp3
+```
+
+```json
+{
+  "report": "Relatório de Gastos:\n\n- 43,4% dos seus gastos são com MORADIA.\n- 37,7% dos seus gastos são com MERCADO.\n- 13,0% dos seus gastos são com LAZER.\n- 5,9% dos seus gastos são com TRANSPORTE.\n\nTotal gasto foi de R$ 2304,29.",
+  "totalAmount": 2304.29,
+  "categories": [
+    { "category": "MORADIA", "totalAmount": 1000.00, "percentage": 43.4 },
+    { "category": "MERCADO", "totalAmount": 869.29, "percentage": 37.7 },
+    { "category": "LAZER", "totalAmount": 300.00, "percentage": 13.0 },
+    { "category": "TRANSPORTE", "totalAmount": 135.00, "percentage": 5.9 }
+  ]
+}
+```
+
+Sem nenhuma transação registrada, devolve `200` com `categories: []` e uma frase padrão avisando que ainda não há dados — sem chamar a IA à toa nesse caso.
+
 ## Estrutura do projeto
 
 Arquitetura em camadas (DDD), pacote base `com.axdborges.voz.budgeting`:
 
-- `domain/` — modelo de domínio e contrato de repositório (`Transaction`, `TransactionId`, `Category`, `TransactionRepository`).
-- `application/` — casos de uso, usados tanto pelo REST quanto pelo Tool Calling (`PersistTransactionUseCase`, `ListTransactionsByCategoryUseCase`, `ListAllTransactionsUseCase`).
-- `infrastructure/http/` — controllers REST (`VoiceCommandController`, `TransactionController`) e o tratamento de erros central (`GlobalExceptionHandler`, um `@RestControllerAdvice` que normaliza exceções da aplicação e do Spring para o mesmo JSON `ErrorResponse`).
-- `infrastructure/ai/` — integração com os modelos de IA (`AudioTranscriptionService`, `TextToSpeechService`, `ChatClientConfig`, `VoiceCommandInterpreter`, `TransactionTools`).
-- `infrastructure/persistence/` — implementação real do `TransactionRepository`: `JpaTransactionRepository` (adapter que converte entre o `Transaction` do domínio e a `TransactionEntity` JPA), `entity/TransactionEntity` (entidade JPA) e `repository/TransactionJpaRepository` (repositório Spring Data).
+- `domain/` — modelo de domínio e contrato de repositório (`Transaction`, `TransactionId`, `Category`, `TransactionRepository`, `AuditLog`, `AuditAction`, `AuditLogRepository`).
+- `application/` — casos de uso, usados tanto pelo REST quanto pelo Tool Calling (`PersistTransactionUseCase`, `ListTransactionsByCategoryUseCase`, `ListAllTransactionsUseCase`, `ListAllAuditLogsUseCase`, `ListAuditLogsByTransactionUseCase`, `GenerateSpendingReportUseCase`).
+- `infrastructure/http/` — controllers REST (`VoiceCommandController`, `TransactionController`, `AuditLogController`, `VersionController`, `ReportController`), a negociação de conteúdo compartilhada por áudio/JSON (`ContentNegotiation`) e o tratamento de erros central (`GlobalExceptionHandler`, um `@RestControllerAdvice` que normaliza exceções da aplicação e do Spring para o mesmo JSON `ErrorResponse`).
+- `infrastructure/ai/` — integração com os modelos de IA (`AudioTranscriptionService`, `TextToSpeechService`, `ChatClientConfig`, `VoiceCommandInterpreter`, `TransactionTools`, `SpendingReportNarrator`).
+- `infrastructure/persistence/` — implementações reais dos repositórios: `JpaTransactionRepository`/`JpaAuditLogRepository` (adapters que convertem entre o domínio e as entidades JPA), `entity/TransactionEntity`/`entity/AuditLogEntity` e os repositórios Spring Data (`repository/TransactionJpaRepository`, `repository/AuditLogJpaRepository`).
 
 ## Testes
 
@@ -292,11 +374,13 @@ docker run --rm voz-test ./gradlew test --no-daemon
 
 > No Windows, rodar `./gradlew test` fora do Docker falha por um problema de encoding do path do projeto — sempre valide via Docker (detalhes em `TESTES.md`).
 
-Ambas as rotas (`POST /voice-commands` e `GET /voice-commands/mock`, incluindo o parâmetro `file` e o valor default) têm testes unitários com mocks em `VoiceCommandControllerTest` — não dependem de áudio real nem de chave da OpenAI. Todas as rotas de `/transactions` (listar tudo, listar por categoria, criar, buscar/editar/apagar por `id`, e os casos de erro 400/404) têm testes equivalentes em `TransactionControllerTest`. `JpaTransactionRepositoryTest` cobre `findById`/`deleteById`/atualização (`save` sobrescrevendo um registro existente com o mesmo `id`) contra o H2 real.
+Ambas as rotas (`POST /voice-commands` e `GET /voice-commands/mock`, incluindo o parâmetro `file` e o valor default) têm testes unitários com mocks em `VoiceCommandControllerTest` — não dependem de áudio real nem de chave da OpenAI. Todas as rotas de `/transactions` (listar tudo, listar por categoria, criar, buscar/editar/apagar por `id`, e os casos de erro 400/404) têm testes equivalentes em `TransactionControllerTest`. `JpaTransactionRepositoryTest` cobre `findById`/`deleteById`/atualização (`save` sobrescrevendo um registro existente com o mesmo `id`) contra o H2 real. `AuditLogControllerTest`, `JpaAuditLogRepositoryTest` e `VersionControllerTest` cobrem, respectivamente, a rota `/audit-logs` (com e sem filtro por `transactionId`), a persistência real dos eventos de auditoria e a rota `/version`; `PersistTransactionUseCaseTest`/`UpdateTransactionUseCaseTest`/`DeleteTransactionUseCaseTest` verificam que cada operação grava o `AuditLog` correto (ação e o resumo do que mudou).
 
 `JpaTransactionRepositoryTest` (`@DataJpaTest`) valida o mapeamento entidade ↔ domínio e as queries reais contra um banco **H2 em memória** — os testes automatizados não dependem do MySQL real do `compose.yml`, só a aplicação em produção/dev usa MySQL de fato.
 
-Testes de integração que fazem chamadas reais à OpenAI (`OpenAiChatModelIntegrationTest`, `AudioTranscriptionServiceIntegrationTest`, `TextToSpeechServiceIntegrationTest`, `VoiceCommandInterpreterIntegrationTest`, `ToolCallingIntegrationTest`, `TransactionVoiceCommandFlowIntegrationTest`) só rodam quando a variável `OPENAI_API_KEY` está definida no ambiente onde os testes executam. O último roda o fluxo completo com áudio real (`mercado.mp3`, `uber.mp3`, `livros.mp3`) registrando transações em categorias diferentes e depois consulta tudo de uma vez com `consulta-todos.mp3`, conferindo tanto a resposta em texto quanto o estado real do repositório:
+`GenerateSpendingReportUseCaseTest` cobre o cálculo determinístico de porcentagens (soma por categoria, soma de múltiplas transações da mesma categoria antes de calcular, caso sem transações) com números exatos, sem envolver IA. `SpendingReportNarratorTest` mocka o `ChatClient` (mesmo truque de `VoiceCommandInterpreterTest`) e confere que o caso sem categorias devolve uma frase pronta **sem chamar o modelo**. `ReportControllerTest` cobre os dois formatos de retorno de `/reports` (JSON e `audio/mpeg`).
+
+Testes de integração que fazem chamadas reais à OpenAI (`OpenAiChatModelIntegrationTest`, `AudioTranscriptionServiceIntegrationTest`, `TextToSpeechServiceIntegrationTest`, `VoiceCommandInterpreterIntegrationTest`, `ToolCallingIntegrationTest`, `TransactionVoiceCommandFlowIntegrationTest`, `SpendingReportNarratorIntegrationTest`) só rodam quando a variável `OPENAI_API_KEY` está definida no ambiente onde os testes executam. O de fluxo completo roda com áudio real (`mercado.mp3`, `uber.mp3`, `livros.mp3`) registrando transações em categorias diferentes e depois consulta tudo de uma vez com `consulta-todos.mp3`, conferindo tanto a resposta em texto quanto o estado real do repositório:
 
 ```bash
 docker run --rm --env-file .env voz-test ./gradlew test --no-daemon
@@ -313,8 +397,9 @@ Além das 10 tarefas principais do desafio, o `TODO.md` lista uma seção de "ev
 - **Endpoints REST mais completos**: a Tarefa 8 pedia só "revisar e organizar" as rotas existentes; foi além disso — CRUD completo por `{id}` (`GET`/`PATCH`/`DELETE`), IDs fortemente tipados como UUID (`TransactionId`, rejeita formato inválido automaticamente), atualização parcial (`PATCH`) com campo `updatedAt`, e um handler de erros global (`GlobalExceptionHandler`) que padroniza **todas** as respostas de erro da API em um único formato JSON — antes, erros do próprio framework (upload mal formado, tipo inválido, parâmetro ausente) caíam numa página HTML genérica em vez do JSON da aplicação.
 - **Testes para os principais fluxos**: cobertura ampla em todas as camadas — testes unitários (casos de uso, tools, domínio), testes de fatia web (`@WebMvcTest`) e de persistência (`@DataJpaTest` contra H2), e testes de integração que rodam o fluxo completo com **áudio real** (transcrição → interpretação → execução → persistência), incluindo o cenário de registrar em categorias diferentes e depois consultar tudo de uma vez.
 - **Documentação mais completa da API**: o README documenta cada rota com exemplos de `curl`, uma tabela explicando os diferentes formatos de retorno conforme o header `Accept` (JSON vs. MP3 puro) e uma tabela de erros possíveis com status/causa de cada um; o `TESTES.md` traz um checklist de como validar qualquer mudança antes de considerá-la pronta.
+- **Proposta de uma nova ideia de assistente usando a mesma base técnica**: `GET /reports`, um relatório de gastos por categoria em porcentagem sobre o total de tudo que já foi registrado (ex.: "43,4% dos seus gastos são com moradia"). A soma e a porcentagem por categoria são calculadas de forma determinística (`GenerateSpendingReportUseCase`, sem IA), e a IA (`SpendingReportNarrator`) entra só depois, para transformar esses números já prontos em um texto natural em português — sem poder inventar categoria ou valor fora do que foi calculado. Igual às rotas de comando de voz, o retorno respeita o header `Accept` (JSON com o detalhamento numérico, ou áudio MP3 narrando o relatório), mas aqui o áudio só é sintetizado quando pedido de fato, evitando uma chamada de TTS desnecessária a cada consulta.
 
-Não implementada: **propor uma nova ideia de assistente usando a mesma base técnica** — é uma proposta de conteúdo (não uma mudança de código) e ficou fora do escopo até agora.
+Todas as evoluções opcionais do `TODO.md` foram cobertas.
 
 ## Status do desafio
 
@@ -328,5 +413,5 @@ Progresso detalhado em `TODO.md`. Resumo:
 - [x] 6. Persistência das transações (MySQL + JPA)
 - [x] 7. Geração de voz a partir da resposta (TTS)
 - [x] 8. Endpoints REST de transações
-- [ ] 9. Logs/auditoria
+- [x] 9. Logs/auditoria e versionamento
 - [ ] 10. Finalização deste README

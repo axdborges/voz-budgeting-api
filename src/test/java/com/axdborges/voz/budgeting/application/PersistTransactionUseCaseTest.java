@@ -2,6 +2,9 @@ package com.axdborges.voz.budgeting.application;
 
 import com.axdborges.voz.budgeting.application.input.PersistTransactionInput;
 import com.axdborges.voz.budgeting.application.output.TransactionOutput;
+import com.axdborges.voz.budgeting.domain.AuditAction;
+import com.axdborges.voz.budgeting.domain.AuditLog;
+import com.axdborges.voz.budgeting.domain.AuditLogRepository;
 import com.axdborges.voz.budgeting.domain.Category;
 import com.axdborges.voz.budgeting.domain.Transaction;
 import com.axdborges.voz.budgeting.domain.TransactionRepository;
@@ -24,9 +27,12 @@ class PersistTransactionUseCaseTest {
     @Mock
     private TransactionRepository transactionRepository;
 
+    @Mock
+    private AuditLogRepository auditLogRepository;
+
     @Test
     void shouldSaveTheTransactionAndReturnItsData() {
-        var useCase = new PersistTransactionUseCase(transactionRepository);
+        var useCase = new PersistTransactionUseCase(transactionRepository, auditLogRepository);
         var input = new PersistTransactionInput("supermercado", Category.MERCADO, BigDecimal.valueOf(50), null);
 
         TransactionOutput output = useCase.execute(input);
@@ -49,7 +55,7 @@ class PersistTransactionUseCaseTest {
 
     @Test
     void shouldSaveTheTransactionWithoutDescriptionWhenNoneIsGiven() {
-        var useCase = new PersistTransactionUseCase(transactionRepository);
+        var useCase = new PersistTransactionUseCase(transactionRepository, auditLogRepository);
         var input = new PersistTransactionInput(null, Category.LAZER, BigDecimal.valueOf(20), null);
 
         TransactionOutput output = useCase.execute(input);
@@ -60,7 +66,7 @@ class PersistTransactionUseCaseTest {
 
     @Test
     void shouldUseTheGivenDateWhenPresentInsteadOfToday() {
-        var useCase = new PersistTransactionUseCase(transactionRepository);
+        var useCase = new PersistTransactionUseCase(transactionRepository, auditLogRepository);
         LocalDate givenDate = LocalDate.now().minusDays(3);
         var input = new PersistTransactionInput("padaria", Category.MERCADO, BigDecimal.valueOf(15), givenDate);
 
@@ -71,5 +77,19 @@ class PersistTransactionUseCaseTest {
 
         assertThat(captor.getValue().occurredAt().toLocalDate()).isEqualTo(givenDate);
         assertThat(output.occurredAt().toLocalDate()).isEqualTo(givenDate);
+    }
+
+    @Test
+    void shouldRecordAnAuditLogWithTheCreatedAction() {
+        var useCase = new PersistTransactionUseCase(transactionRepository, auditLogRepository);
+        var input = new PersistTransactionInput("supermercado", Category.MERCADO, BigDecimal.valueOf(50), null);
+
+        useCase.execute(input);
+
+        ArgumentCaptor<AuditLog> captor = ArgumentCaptor.forClass(AuditLog.class);
+        verify(auditLogRepository).save(captor.capture());
+
+        assertThat(captor.getValue().action()).isEqualTo(AuditAction.CREATED);
+        assertThat(captor.getValue().detail()).contains("MERCADO").contains("50").contains("supermercado");
     }
 }
