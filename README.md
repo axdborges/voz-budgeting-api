@@ -2,9 +2,11 @@
 
 API de orçamento que usa IA para processar comandos de voz relacionados a transações financeiras. O cliente envia um áudio, a aplicação transcreve o comando e interpreta a intenção com um LLM, que classifica o comando em uma de três categorias — **registrar transação**, **consultar transações** ou **intenção não identificada** (quando o áudio não é um comando financeiro claro) — e **executa a ação de verdade via Tool Calling** (persiste ou consulta as transações), devolvendo uma resposta em **texto e em áudio** (texto-para-voz).
 
+Além do fluxo por voz, a API expõe endpoints REST diretos para gerenciar as transações (CRUD completo), consultar o histórico de auditoria de cada uma, checar a versão em execução e gerar, também com IA, um relatório de gastos por categoria em porcentagem.
+
 Desafio de Projeto da [DIO](https://dio.me), baseado no repositório [dio-spring-boot-learning-track](https://github.com/axdborges/dio-spring-boot-learning-track/tree/main)/05-spring-ai.
 
-> 🚧 Projeto em andamento. O andamento das tarefas está em `TODO.md`; este README é atualizado conforme o projeto avança e será fechado na tarefa final.
+> ✅ Desafio concluído — todas as tarefas principais e todas as evoluções opcionais foram implementadas.
 
 ## Tecnologias
 
@@ -155,8 +157,6 @@ Formato do corpo de erro (mesmo para todas as rotas):
 ```
 
 > Dica de teste no Insomnia: o campo do arquivo tem que se chamar exatamente `audio` (minúsculo, sem espaços), com tipo **File** e a linha marcada; e **não** defina `Content-Type` manualmente — deixe o Insomnia gerar o `multipart/form-data; boundary=...` sozinho. O `Accept: audio/mpeg` pode ficar, é ele que faz a resposta vir como MP3 (e, em caso de erro, o JSON acima).
-
-> Status atual: transcrição, interpretação, execução real (persistência/consulta) e geração de voz já funcionam de ponta a ponta. A persistência é **real, em MySQL** (`JpaTransactionRepository` + `TransactionEntity`) — os dados sobrevivem a reinícios da aplicação.
 
 ### `GET /voice-commands/mock`
 
@@ -365,14 +365,14 @@ Arquitetura em camadas (DDD), pacote base `com.axdborges.voz.budgeting`:
 
 ## Testes
 
-Ver `TESTES.md` para os comandos completos. Resumo:
+Como testar o fluxo principal (transcrição → interpretação → Tool Calling → persistência → voz), sem precisar de áudio real nem de chave da OpenAI — tudo mockado:
 
 ```bash
 docker build --target build -t voz-test .
 docker run --rm voz-test ./gradlew test --no-daemon
 ```
 
-> No Windows, rodar `./gradlew test` fora do Docker falha por um problema de encoding do path do projeto — sempre valide via Docker (detalhes em `TESTES.md`).
+> No Windows, rodar `./gradlew test` fora do Docker falha por um problema de encoding do path do projeto — sempre valide via Docker.
 
 Ambas as rotas (`POST /voice-commands` e `GET /voice-commands/mock`, incluindo o parâmetro `file` e o valor default) têm testes unitários com mocks em `VoiceCommandControllerTest` — não dependem de áudio real nem de chave da OpenAI. Todas as rotas de `/transactions` (listar tudo, listar por categoria, criar, buscar/editar/apagar por `id`, e os casos de erro 400/404) têm testes equivalentes em `TransactionControllerTest`. `JpaTransactionRepositoryTest` cobre `findById`/`deleteById`/atualização (`save` sobrescrevendo um registro existente com o mesmo `id`) contra o H2 real. `AuditLogControllerTest`, `JpaAuditLogRepositoryTest` e `VersionControllerTest` cobrem, respectivamente, a rota `/audit-logs` (com e sem filtro por `transactionId`), a persistência real dos eventos de auditoria e a rota `/version`; `PersistTransactionUseCaseTest`/`UpdateTransactionUseCaseTest`/`DeleteTransactionUseCaseTest` verificam que cada operação grava o `AuditLog` correto (ação e o resumo do que mudou).
 
@@ -386,32 +386,23 @@ Testes de integração que fazem chamadas reais à OpenAI (`OpenAiChatModelInteg
 docker run --rm --env-file .env voz-test ./gradlew test --no-daemon
 ```
 
-## Melhorias extras implementadas
+## Melhorias implementadas
 
-Além das 10 tarefas principais do desafio, o `TODO.md` lista uma seção de "evoluções opcionais" — melhorias sugeridas, mas não obrigatórias. A maioria delas acabou surgindo organicamente enquanto as tarefas principais eram desenvolvidas e validadas com áudios reais, não como um bloco separado de trabalho:
+Além das 10 tarefas principais do desafio, havia uma lista de evoluções opcionais — melhorias sugeridas, mas não obrigatórias. Todas foram implementadas; a maioria surgiu organicamente enquanto as tarefas principais eram desenvolvidas e validadas com áudios reais, não como um bloco separado de trabalho:
 
 - **Novos tipos de consulta financeira**: além de consultar uma categoria específica (`consultarTransacoesPorCategoria`), a API também consulta **todas as transações de uma vez, agrupadas por categoria e com o total de cada uma** (`consultarTodasAsTransacoes`) — surgiu ao testar um comando de voz do tipo "quais foram todas as minhas transações".
 - **Respostas da IA mais confiáveis**: o prompt de classificação de intenção passou por várias rodadas de ajuste depois de testes com áudio real — ganhou uma terceira categoria explícita ("intenção não identificada", pra evitar que o modelo "chute" registrar ou consultar quando o áudio é ambíguo), passou a cobrir relatos indiretos de gasto (não só verbos diretos como "gastei"/"paguei") e resolve datas relativas ("ontem", "segunda passada") para a data real antes de registrar.
 - **Novas ferramentas no Tool Calling**: `consultarTodasAsTransacoes` é uma tool adicional, além das duas do escopo original (`registrarTransacao`, `consultarTransacoesPorCategoria`).
 - **Validações antes de salvar uma transação**: as rotas REST diretas (`POST`/`PATCH /transactions`) validam `category` obrigatória e `amount` maior que zero antes de persistir, devolvendo `400 Bad Request` com mensagem clara em caso de dado inválido.
-- **Endpoints REST mais completos**: a Tarefa 8 pedia só "revisar e organizar" as rotas existentes; foi além disso — CRUD completo por `{id}` (`GET`/`PATCH`/`DELETE`), IDs fortemente tipados como UUID (`TransactionId`, rejeita formato inválido automaticamente), atualização parcial (`PATCH`) com campo `updatedAt`, e um handler de erros global (`GlobalExceptionHandler`) que padroniza **todas** as respostas de erro da API em um único formato JSON — antes, erros do próprio framework (upload mal formado, tipo inválido, parâmetro ausente) caíam numa página HTML genérica em vez do JSON da aplicação.
+- **Endpoints REST mais completos**: além de listar/criar transações, a API tem CRUD completo por `{id}` (`GET`/`PATCH`/`DELETE`), IDs fortemente tipados como UUID (`TransactionId`, rejeita formato inválido automaticamente), atualização parcial (`PATCH`) com campo `updatedAt`, e um handler de erros global (`GlobalExceptionHandler`) que padroniza **todas** as respostas de erro da API em um único formato JSON — antes, erros do próprio framework (upload mal formado, tipo inválido, parâmetro ausente) caíam numa página HTML genérica em vez do JSON da aplicação.
 - **Testes para os principais fluxos**: cobertura ampla em todas as camadas — testes unitários (casos de uso, tools, domínio), testes de fatia web (`@WebMvcTest`) e de persistência (`@DataJpaTest` contra H2), e testes de integração que rodam o fluxo completo com **áudio real** (transcrição → interpretação → execução → persistência), incluindo o cenário de registrar em categorias diferentes e depois consultar tudo de uma vez.
-- **Documentação mais completa da API**: o README documenta cada rota com exemplos de `curl`, uma tabela explicando os diferentes formatos de retorno conforme o header `Accept` (JSON vs. MP3 puro) e uma tabela de erros possíveis com status/causa de cada um; o `TESTES.md` traz um checklist de como validar qualquer mudança antes de considerá-la pronta.
+- **Documentação mais completa da API**: este README documenta cada rota com exemplos de `curl`, uma tabela explicando os diferentes formatos de retorno conforme o header `Accept` (JSON vs. MP3 puro) e uma tabela de erros possíveis com status/causa de cada um.
 - **Proposta de uma nova ideia de assistente usando a mesma base técnica**: `GET /reports`, um relatório de gastos por categoria em porcentagem sobre o total de tudo que já foi registrado (ex.: "43,4% dos seus gastos são com moradia"). A soma e a porcentagem por categoria são calculadas de forma determinística (`GenerateSpendingReportUseCase`, sem IA), e a IA (`SpendingReportNarrator`) entra só depois, para transformar esses números já prontos em um texto natural em português — sem poder inventar categoria ou valor fora do que foi calculado. Igual às rotas de comando de voz, o retorno respeita o header `Accept` (JSON com o detalhamento numérico, ou áudio MP3 narrando o relatório), mas aqui o áudio só é sintetizado quando pedido de fato, evitando uma chamada de TTS desnecessária a cada consulta.
 
-Todas as evoluções opcionais do `TODO.md` foram cobertas.
+## O que aprendi durante o desafio
 
-## Status do desafio
-
-Progresso detalhado em `TODO.md`. Resumo:
-
-- [x] 1. Estrutura base do projeto
-- [x] 2. Spring AI + integração com o modelo de linguagem
-- [x] 3. Recebimento e transcrição de áudio
-- [x] 4. `ChatClient` e interpretação de intenção
-- [x] 5. Tool Calling
-- [x] 6. Persistência das transações (MySQL + JPA)
-- [x] 7. Geração de voz a partir da resposta (TTS)
-- [x] 8. Endpoints REST de transações
-- [x] 9. Logs/auditoria e versionamento
-- [ ] 10. Finalização deste README
+- **Negociação de conteúdo por `Accept` exige cuidado extra numa API que devolve tanto JSON quanto áudio**: o coringa `*/*` (padrão de curl/browser) não pode "vencer" e acabar servindo áudio bruto por engano — só decidir por um tipo `audio/*` concreto e explícito é confiável. E o mesmo raciocínio vale para os **erros**: sem fixar o `Content-Type` da resposta de erro como JSON, um cliente que mandou `Accept: audio/mpeg` recebia um corpo vazio (o Spring não achava conversor pra serializar o erro como áudio) — só descobri isso testando o caso de erro manualmente, não só o caminho feliz.
+- **Prompt de IA se valida com áudio real, não com o caso ideal na cabeça**: mais de uma vez um comando que "deveria" funcionar (relato indireto de gasto sem verbo explícito, ou um áudio ambíguo sem intenção financeira) só revelou a falha do prompt ao ser testado com gravações de verdade — os casos-limite não apareciam pensando no fluxo abstrato.
+- **IA é ótima pra linguagem, ruim pra aritmética confiável**: no relatório de gastos (`GET /reports`), separar o cálculo (determinístico, em Java) da narração (IA, só frasear números já prontos) evita depender do modelo "acertar" uma soma ou porcentagem — ele só recebe os números certos e escreve em português.
+- **Versão de framework muda onde as coisas moram**: no Spring Boot 4, fatias de teste como `@WebMvcTest` e `@DataJpaTest` foram para artefatos e pacotes diferentes dos que a maioria dos tutoriais/documentação antiga mostra — vale checar o jar de verdade em vez de confiar em exemplos desatualizados.
+- **"Funciona na minha máquina" não é validação**: um bug de encoding fazia os testes falharem só no Windows deste projeto; rodar tudo dentro do Docker (ambiente controlado, igual ao de produção) foi o que manteve a suíte confiável do início ao fim.
