@@ -9,6 +9,7 @@ import com.axdborges.voz.budgeting.infrastructure.persistence.repository.Transac
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public class JpaTransactionRepository implements TransactionRepository {
@@ -38,13 +39,23 @@ public class JpaTransactionRepository implements TransactionRepository {
                 .toList();
     }
 
+    @Override
+    public Optional<Transaction> findById(TransactionId id) {
+        return jpaRepository.findById(id.value().toString()).map(this::toDomain);
+    }
+
+    @Override
+    public void deleteById(TransactionId id) {
+        jpaRepository.deleteById(id.value().toString());
+    }
+
     private TransactionEntity toEntity(Transaction transaction) {
-        return new TransactionEntity(transaction.id().value(), transaction.description(), transaction.category(),
-                transaction.amount(), transaction.occurredAt());
+        return new TransactionEntity(transaction.id().value().toString(), transaction.description(),
+                transaction.category(), transaction.amount(), transaction.occurredAt(), transaction.updatedAt());
     }
 
     private Transaction toDomain(TransactionEntity entity) {
-        return new Transaction(new TransactionId(entity.getId()), entity.getDescription(), entity.getCategory(),
-                entity.getAmount(), entity.getOccurredAt());
+        return new Transaction(TransactionId.of(entity.getId()), entity.getDescription(), entity.getCategory(),
+                entity.getAmount(), entity.getOccurredAt(), entity.getUpdatedAt());
     }
 }

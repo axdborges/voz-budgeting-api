@@ -28,7 +28,7 @@ public class PersistTransactionUseCase {
 
         transactionRepository.save(transaction);
 
-        return new TransactionOutput(transaction.id().value(), transaction.description(), transaction.category(),
-                transaction.amount(), transaction.occurredAt());
+        return new TransactionOutput(transaction.id().value().toString(), transaction.description(),
+                transaction.category(), transaction.amount(), transaction.occurredAt(), transaction.updatedAt());
     }
 }

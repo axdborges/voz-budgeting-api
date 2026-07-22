@@ -34,7 +34,7 @@ class ListTransactionsByCategoryUseCaseTest {
 
         assertThat(outputs).hasSize(1);
         TransactionOutput output = outputs.get(0);
-        assertThat(output.id()).isEqualTo(transaction.id().value());
+        assertThat(output.id()).isEqualTo(transaction.id().value().toString());
         assertThat(output.description()).isEqualTo("supermercado");
         assertThat(output.category()).isEqualTo(Category.MERCADO);
         assertThat(output.amount()).isEqualByComparingTo(BigDecimal.valueOf(50));

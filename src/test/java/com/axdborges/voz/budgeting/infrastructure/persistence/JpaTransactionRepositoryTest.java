@@ -12,8 +12,10 @@ import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabas
 import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -87,6 +89,56 @@ class JpaTransactionRepositoryTest {
 
         assertThat(found).hasSize(1);
         assertThat(found.get(0).description()).isNull();
-        assertThat(found.get(0).occurredAt().toLocalDate()).isEqualTo(java.time.LocalDate.of(2026, 7, 19));
+        assertThat(found.get(0).occurredAt().toLocalDate()).isEqualTo(LocalDate.of(2026, 7, 19));
+    }
+
+    @Test
+    void shouldFindAPersistedTransactionById() {
+        Transaction mercado = new Transaction(TransactionId.generate(), "supermercado", Category.MERCADO,
+                BigDecimal.TEN, LocalDateTime.now());
+        repository.save(mercado);
+
+        Optional<Transaction> found = repository.findById(mercado.id());
+
+        assertThat(found).isPresent();
+        assertThat(found.get().id()).isEqualTo(mercado.id());
+        assertThat(found.get().description()).isEqualTo("supermercado");
+    }
+
+    @Test
+    void shouldReturnEmptyWhenFindingByAnUnknownId() {
+        assertThat(repository.findById(TransactionId.generate())).isEmpty();
+    }
+
+    @Test
+    void shouldDeleteAPersistedTransaction() {
+        Transaction mercado = new Transaction(TransactionId.generate(), "supermercado", Category.MERCADO,
+                BigDecimal.TEN, LocalDateTime.now());
+        repository.save(mercado);
+
+        repository.deleteById(mercado.id());
+
+        assertThat(repository.findById(mercado.id())).isEmpty();
+    }
+
+    @Test
+    void shouldOverwriteAnExistingTransactionWithTheSameIdAndPersistUpdatedAt() {
+        TransactionId id = TransactionId.generate();
+        Transaction original = new Transaction(id, "supermercado", Category.MERCADO, BigDecimal.TEN,
+                LocalDateTime.of(2026, 7, 19, 10, 0));
+        repository.save(original);
+
+        LocalDateTime updatedAt = LocalDateTime.of(2026, 7, 21, 9, 0);
+        Transaction edited = new Transaction(id, "supermercado atualizado", Category.MERCADO,
+                BigDecimal.valueOf(20), original.occurredAt(), updatedAt);
+        repository.save(edited);
+
+        Optional<Transaction> found = repository.findById(id);
+
+        assertThat(found).isPresent();
+        assertThat(found.get().description()).isEqualTo("supermercado atualizado");
+        assertThat(found.get().amount()).isEqualByComparingTo(BigDecimal.valueOf(20));
+        assertThat(found.get().updatedAt()).isEqualTo(updatedAt);
+        assertThat(repository.findAll()).hasSize(1);
     }
 }

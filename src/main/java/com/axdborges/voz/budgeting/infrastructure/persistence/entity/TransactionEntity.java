@@ -26,16 +26,19 @@ public class TransactionEntity {
 
     private LocalDateTime occurredAt;
 
+    private LocalDateTime updatedAt;
+
     protected TransactionEntity() {
     }
 
     public TransactionEntity(String id, String description, Category category, BigDecimal amount,
-                              LocalDateTime occurredAt) {
+                              LocalDateTime occurredAt, LocalDateTime updatedAt) {
         this.id = id;
         this.description = description;
         this.category = category;
         this.amount = amount;
         this.occurredAt = occurredAt;
+        this.updatedAt = updatedAt;
     }
 
     public String getId() {
@@ -56,5 +59,9 @@ public class TransactionEntity {
 
     public LocalDateTime getOccurredAt() {
         return occurredAt;
+    }
+
+    public LocalDateTime getUpdatedAt() {
+        return updatedAt;
     }
 }

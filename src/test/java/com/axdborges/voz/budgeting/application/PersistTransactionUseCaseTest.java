@@ -35,13 +35,13 @@ class PersistTransactionUseCaseTest {
         verify(transactionRepository).save(captor.capture());
         Transaction saved = captor.getValue();
 
-        assertThat(saved.id().value()).isNotBlank();
+        assertThat(saved.id().value()).isNotNull();
         assertThat(saved.description()).isEqualTo("supermercado");
         assertThat(saved.category()).isEqualTo(Category.MERCADO);
         assertThat(saved.amount()).isEqualByComparingTo(BigDecimal.valueOf(50));
         assertThat(saved.occurredAt().toLocalDate()).isEqualTo(LocalDate.now());
 
-        assertThat(output.id()).isEqualTo(saved.id().value());
+        assertThat(output.id()).isEqualTo(saved.id().value().toString());
         assertThat(output.description()).isEqualTo("supermercado");
         assertThat(output.category()).isEqualTo(Category.MERCADO);
         assertThat(output.amount()).isEqualByComparingTo(BigDecimal.valueOf(50));
